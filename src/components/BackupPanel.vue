@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { NTag } from "naive-ui";
 import type { BackupEntry } from "../types";
 
 const props = defineProps<{
@@ -54,9 +55,13 @@ function timeLabel(ts: string): string {
         :class="{ selected: b.name === selected }"
         @click="emit('select-backup', b.name)"
       >
-        <span class="badge" :class="b.kind === 'auto' ? 'badge-auto' : 'badge-manual'">
+        <n-tag
+          :type="b.kind === 'auto' ? 'success' : 'warning'"
+          size="small"
+          :bordered="false"
+        >
           {{ b.kind === "auto" ? "自动" : "手动" }}
-        </span>
+        </n-tag>
         <span class="backup-time">{{ timeLabel(b.timestamp) }}</span>
       </div>
     </div>
