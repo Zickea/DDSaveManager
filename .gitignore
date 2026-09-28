@@ -1,0 +1,16 @@
+# Rust / Cargo 构建产物
+/src-tauri/target/
+
+# Node（若未来引入前端依赖）
+node_modules/
+dist/
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# 日志
+*.log

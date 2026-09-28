@@ -1,0 +1,23 @@
+[package]
+name = "dd-save-manager"
+version = "0.1.0"
+description = "暗黑地牢1 存档管家：自动/手动备份与恢复"
+authors = ["Liu Xiaofan"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify = "7"
+chrono = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[lib]
+name = "dd_save_manager_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
