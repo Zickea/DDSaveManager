@@ -9,6 +9,7 @@ defineProps<{
 
 const emit = defineEmits<{
   select: [name: string];
+  "delete-profile": [name: string];
 }>();
 </script>
 
@@ -26,8 +27,20 @@ const emit = defineEmits<{
         :class="{ active: p.name === current }"
         @click="emit('select', p.name)"
       >
-        <div class="profile-name">{{ p.name }}</div>
-        <div class="profile-week">当前：{{ p.week != null ? `第 ${p.week} 周` : "未知" }}</div>
+        <div class="profile-info">
+          <div class="profile-name">{{ p.name }}</div>
+          <div class="profile-week">当前：{{ p.week != null ? `第 ${p.week} 周` : "未知" }}</div>
+        </div>
+        <n-button
+          class="del-btn"
+          size="tiny"
+          quaternary
+          circle
+          title="删除此档案"
+          @click.stop="emit('delete-profile', p.name)"
+        >
+          ✕
+        </n-button>
       </div>
     </div>
     <div class="side-path">{{ pathText }}</div>

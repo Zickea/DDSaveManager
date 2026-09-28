@@ -5,7 +5,7 @@ use std::path::Path;
 
 use chrono::Local;
 
-use crate::{paths, week};
+use crate::{paths, profiles, week};
 
 /// 备份存放的子目录名（位于各 profile_N 下，与官方 backup 同级）。
 const SAVE_DIR: &str = "DDSL_save";
@@ -169,6 +169,36 @@ pub fn delete_backup(remote: &Path, profile: &str, backup_name: &str) -> Result<
         return Err(format!("备份 {backup_name} 不存在"));
     }
     fs::remove_dir_all(&p).map_err(|e| format!("删除失败: {e}"))
+}
+
+/// 校验档案名：必须是 remote 下真实存在的存档位（profile_0~8），防路径注入。
+fn validate_profile(remote: &Path, profile: &str) -> Result<(), String> {
+    if profiles::list_profiles(remote).iter().any(|p| p == profile) {
+        Ok(())
+    } else {
+        Err(format!("无效档案名: {profile}"))
+    }
+}
+
+/// 删除某档案的全部备份（保留游戏存档本身与官方 backup 目录）。
+pub fn clear_profile_backups(remote: &Path, profile: &str) -> Result<(), String> {
+    validate_profile(remote, profile)?;
+    let dir = remote.join(profile).join(SAVE_DIR);
+    if dir.exists() {
+        fs::remove_dir_all(&dir).map_err(|e| format!("删除备份失败: {e}"))?;
+    }
+    Ok(())
+}
+
+/// 删除整个档案：存档位目录（游戏进度 + 备份 + 官方 backup 目录）一并删除。
+/// 游戏运行中禁止执行，防止游戏写盘冲突。
+pub fn delete_profile(remote: &Path, profile: &str) -> Result<(), String> {
+    if game_running() {
+        return Err("检测到游戏正在运行，请先退出游戏再删除档案".into());
+    }
+    validate_profile(remote, profile)?;
+    let dir = remote.join(profile);
+    fs::remove_dir_all(&dir).map_err(|e| format!("删除档案失败: {e}"))
 }
 
 /// 进程检测结果缓存：5 秒内复用，避免频繁启动 tasklist 子进程（黑窗闪现与卡顿的根源）。

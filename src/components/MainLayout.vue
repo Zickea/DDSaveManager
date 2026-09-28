@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { NButton, NTag, useDialog, useMessage } from "naive-ui";
+import { NButton, NModal, NTag, useDialog, useMessage } from "naive-ui";
 import type { BackupEntry, ProfileInfo, StatusInfo } from "../types";
 import ProfileSidebar from "./ProfileSidebar.vue";
 import BackupPanel from "./BackupPanel.vue";
@@ -161,6 +161,66 @@ async function toggleWatch() {
   }
 }
 
+/* ========== 删除档案 ========== */
+const showDeleteModal = ref(false);
+const deleteTarget = ref<string | null>(null);
+
+function askDeleteProfile(name: string) {
+  deleteTarget.value = name;
+  showDeleteModal.value = true;
+}
+
+async function clearBackupsOnly() {
+  const name = deleteTarget.value;
+  if (!name) return;
+  try {
+    await invoke("clear_profile_backups", { profile: name });
+    message.success(`已删除 ${name} 的全部备份（游戏进度保留）`);
+    showDeleteModal.value = false;
+    afterProfileChanged(name);
+  } catch (e) {
+    message.error(String(e));
+  }
+}
+
+function deleteProfileAll() {
+  const name = deleteTarget.value;
+  if (!name) return;
+  dialog.error({
+    title: "删除整个档案",
+    content: `确定要删除档案 ${name} 吗？\n这将删除该存档位的全部游戏进度与所有备份（含官方 backup 目录），不可恢复！\n请确认游戏已退出。`,
+    positiveText: "删除档案",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        await invoke("stop_watchers");
+        await invoke("delete_profile", { profile: name });
+        message.success(`已删除档案 ${name}`);
+        showDeleteModal.value = false;
+        afterProfileChanged(name);
+        await invoke("start_watchers");
+      } catch (e) {
+        message.error(String(e));
+        try {
+          await invoke("start_watchers");
+        } catch (_) {}
+      }
+    },
+  });
+}
+
+// 删除后收尾：若删的是当前档案则清空选中；从 knownProfiles 移除以便重建后自动接入监控
+function afterProfileChanged(name: string) {
+  if (currentProfile.value === name) {
+    currentProfile.value = null;
+    selectedBackup.value = null;
+    backups.value = [];
+  }
+  knownProfiles.delete(name);
+  refreshProfiles();
+  refreshStatus();
+}
+
 /* ========== 事件 ========== */
 let unlisteners: UnlistenFn[] = [];
 async function setupEvents() {
@@ -233,6 +293,7 @@ onUnmounted(() => {
         :current="currentProfile"
         :path-text="remotePath"
         @select="selectProfile"
+        @delete-profile="askDeleteProfile"
       />
 
       <section id="detail">
@@ -255,9 +316,24 @@ onUnmounted(() => {
         <BackupPanel :backups="backups" :selected="selectedBackup" @select-backup="selectBackup" />
 
         <div class="tip">
-          <b>说明：</b>每周第一个（绿色）为自动存档（回城时触发，每周最多一个）；其余为手动存档。恢复会用所选备份覆盖当前档案且无法撤销，请先确认；恢复前需退出游戏。监控监听存档文件夹变化，与游戏是否运行无关，可随时手动启停。
+          <b>说明：</b>每周第一个（绿色）为自动存档（回城时触发，每周最多一个）；其余为手动存档。恢复会用所选备份覆盖当前档案且无法撤销，请先确认；恢复前需退出游戏。监控监听存档文件夹变化，与游戏是否运行无关，可随时手动启停。侧栏档案右侧 ✕ 可删除（备份或整个档案）。
         </div>
       </section>
     </main>
+
+    <n-modal v-model:show="showDeleteModal">
+      <div class="delete-modal">
+        <h3>删除档案 {{ deleteTarget }}</h3>
+        <p class="dim">请选择删除范围（均为不可恢复操作，请谨慎）：</p>
+        <div class="del-actions">
+          <n-button type="warning" block @click="clearBackupsOnly">
+            仅删除全部备份（保留游戏进度）
+          </n-button>
+          <n-button type="error" block @click="deleteProfileAll">
+            删除整个档案（进度 + 备份，不可恢复）
+          </n-button>
+        </div>
+      </div>
+    </n-modal>
   </div>
 </template>

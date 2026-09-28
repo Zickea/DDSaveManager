@@ -119,6 +119,28 @@ fn delete_backup(
     backup::delete_backup(remote, &profile, &backup_name)
 }
 
+#[tauri::command]
+fn clear_profile_backups(
+    state: tauri::State<AppState>,
+    profile: String,
+) -> Result<(), String> {
+    let Some(remote) = &state.remote_dir else {
+        return Err("未找到暗黑地牢存档目录".into());
+    };
+    backup::clear_profile_backups(remote, &profile)
+}
+
+#[tauri::command]
+fn delete_profile(
+    state: tauri::State<AppState>,
+    profile: String,
+) -> Result<(), String> {
+    let Some(remote) = &state.remote_dir else {
+        return Err("未找到暗黑地牢存档目录".into());
+    };
+    backup::delete_profile(remote, &profile)
+}
+
 /// 为当前所有档案启动监控（幂等：已监控的跳过）。
 fn start_all_watchers(app: AppHandle, state: &AppState) -> Result<Vec<String>, String> {
     let Some(remote) = &state.remote_dir else {
@@ -169,6 +191,8 @@ pub fn run() {
             list_backups,
             restore_backup,
             delete_backup,
+            clear_profile_backups,
+            delete_profile,
             start_watchers,
             stop_watchers
         ])
