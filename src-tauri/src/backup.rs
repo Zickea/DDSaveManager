@@ -81,7 +81,10 @@ pub fn backup_profile(remote: &Path, profile: &str, kind: &str) -> Result<Backup
     let dir_name = format!("{ts}_{week_tag}_{kind}");
     let dst = src.join(SAVE_DIR).join(&dir_name); // 备份统一放在 profile_N\DDSL_save 下
     // 只备份存档文件本身（不包含子目录，如官方 backup 文件夹、其他备份）
-    copy_files_only(&src, &dst).map_err(|e| format!("备份失败: {e}"))?;
+    copy_files_only(&src, &dst).map_err(|e| {
+        eprintln!("[backup] {profile} 复制失败（{kind}）: {e}");
+        format!("备份失败: {e}")
+    })?;
     Ok(BackupEntry {
         name: dir_name,
         timestamp: ts,

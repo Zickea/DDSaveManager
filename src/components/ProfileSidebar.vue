@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { ProfileInfo } from "../types";
+import { invoke } from "@tauri-apps/api/core";
 import { NButton, NLayout } from "naive-ui";
+import type { ProfileInfo } from "../types";
 
 defineProps<{
   profiles: ProfileInfo[];
@@ -12,6 +13,15 @@ const emit = defineEmits<{
   select: [name: string];
   "delete-profile": [name: string];
 }>();
+
+// 点击存档目录文本 → 在文件资源管理器中打开（后端只打开自身定位的 remote 目录）
+async function openPath() {
+  try {
+    await invoke("open_remote_dir");
+  } catch (e) {
+    console.error("open_remote_dir:", e);
+  }
+}
 </script>
 
 <template>
@@ -46,6 +56,8 @@ const emit = defineEmits<{
         </n-button>
       </div>
     </div>
-    <div class="side-path">{{ pathText }}</div>
+    <div class="side-path" title="点击在文件资源管理器中打开存档目录" @click="openPath">
+      {{ pathText }}
+    </div>
   </n-layout>
 </template>

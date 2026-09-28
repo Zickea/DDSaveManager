@@ -181,6 +181,29 @@ fn stop_watchers(state: tauri::State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// 在文件资源管理器中打开存档根目录（不接收前端传入路径，只打开自身定位的 remote 目录，防注入）。
+#[tauri::command]
+fn open_remote_dir(state: tauri::State<AppState>) -> Result<(), String> {
+    let Some(remote) = &state.remote_dir else {
+        return Err("未找到暗黑地牢存档目录".into());
+    };
+    open_in_explorer(remote)
+}
+
+#[cfg(windows)]
+fn open_in_explorer(path: &std::path::Path) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开目录失败: {e}"))
+}
+
+#[cfg(not(windows))]
+fn open_in_explorer(_path: &std::path::Path) -> Result<(), String> {
+    Err("仅支持 Windows".into())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::new())
@@ -194,7 +217,8 @@ pub fn run() {
             clear_profile_backups,
             delete_profile,
             start_watchers,
-            stop_watchers
+            stop_watchers,
+            open_remote_dir
         ])
         .setup(|app| {
             // 应用启动即自动开启监控（用户无需手动点按钮）

@@ -161,7 +161,10 @@ h1 { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
   word-break: break-all;
   line-height: 1.6;
   margin-top: auto;
+  cursor: pointer;
+  transition: color .15s;
 }
+.side-path:hover { color: var(--gold); }
 .empty { color: var(--text-faint); font-size: 13px; padding: 8px 0; }
 
 /* 详情区 */
