@@ -30,7 +30,8 @@ fn emit(app: &AppHandle, event: &str, payload: impl serde::Serialize) {
     let _ = app.emit(event, value);
 }
 
-/// 回城自动备份（同步函数，含 5 秒存档稳定等待 + 按周去重；由独立线程调用）。
+/// 回城自动备份（同步函数，由独立线程调用）。
+/// 含 5 秒存档稳定等待 + 复制失败有限重试（游戏运行中写盘竞争）+ 按周去重。
 fn backup_on_raid_end(app: AppHandle, remote: std::path::PathBuf, profile: String) {
     std::thread::sleep(Duration::from_secs(5));
     let week = profiles::current_week(&remote, &profile);
@@ -39,10 +40,22 @@ fn backup_on_raid_end(app: AppHandle, remote: std::path::PathBuf, profile: Strin
             return;
         }
     }
-    match backup::backup_profile(&remote, &profile, "auto") {
-        Ok(entry) => emit(&app, "auto-backup-done", entry),
-        Err(err) => emit(&app, "auto-backup-error", err),
+    // 自动备份发生在游戏运行中，复制存档文件可能撞上游戏写盘而失败：
+    // 最多重试 3 次、每次间隔 3 秒（有限重试，非轮询）。
+    let mut last_err = String::new();
+    for _ in 0..3 {
+        match backup::backup_profile(&remote, &profile, "auto") {
+            Ok(entry) => {
+                emit(&app, "auto-backup-done", entry);
+                return;
+            }
+            Err(err) => {
+                last_err = err;
+                std::thread::sleep(Duration::from_secs(3));
+            }
+        }
     }
+    emit(&app, "auto-backup-error", last_err);
 }
 
 /// 为单个档案启动监控：返回 watcher 句柄（drop 即停止）。

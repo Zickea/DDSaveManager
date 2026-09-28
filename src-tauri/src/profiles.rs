@@ -22,7 +22,7 @@ pub fn list_profiles(remote: &Path) -> Vec<String> {
     out.into_iter().map(|(_, name)| name).collect()
 }
 
-/// 读取某档案当前的周数（total_weeks 即游戏内当前周数，第0周=教学关）。
+/// 读取某档案当前的周数（玩家视角：total_weeks - 1，第0周=教学关）。
 pub fn current_week(remote: &Path, profile: &str) -> Option<u32> {
     week::read_total_weeks(&remote.join(profile).join("persist.campaign_log.json"))
 }

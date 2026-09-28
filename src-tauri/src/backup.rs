@@ -71,7 +71,7 @@ pub fn backup_profile(remote: &Path, profile: &str, kind: &str) -> Result<Backup
     if !src.is_dir() {
         return Err(format!("档案 {profile} 不存在"));
     }
-    // total_weeks 即游戏内当前周数（第0周=教学关）
+    // read_total_weeks 已返回玩家视角周数（total_weeks - 1，第0周=教学关）
     let week = week::read_total_weeks(&src.join("persist.campaign_log.json"));
     let ts = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let week_tag = match week {
