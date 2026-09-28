@@ -16,6 +16,8 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body, #app { height: 100%; }
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -26,6 +28,8 @@ body {
   overflow: hidden;
 }
 
+#app { display: flex; flex-direction: column; }
+
 /* ===== 顶栏 ===== */
 header {
   display: flex;
@@ -34,6 +38,7 @@ header {
   padding: 14px 20px;
   border-bottom: 1px solid var(--line);
   background: var(--bg-3);
+  flex-shrink: 0;
 }
 
 .brand { display: flex; align-items: center; gap: 12px; }
@@ -60,6 +65,7 @@ h1 { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
 }
 .pill.good { color: var(--green-bright); border-color: var(--green); }
 .pill.warn { color: var(--red-bright); border-color: var(--red); }
+.pill.off { color: var(--text-dim); border-color: var(--line-2); }
 
 /* ===== 主区 ===== */
 main {
@@ -121,6 +127,7 @@ main {
   border-bottom: 1px solid var(--line);
   gap: 12px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 .detail-title { font-size: 18px; font-weight: 700; }
 .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -134,6 +141,7 @@ main {
   color: var(--text);
   cursor: pointer;
   transition: filter .15s, opacity .15s;
+  font-family: inherit;
 }
 .btn:hover { filter: brightness(1.15); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -190,6 +198,7 @@ main {
   border-top: 1px solid var(--line);
   background: var(--bg-3);
   line-height: 1.7;
+  flex-shrink: 0;
 }
 .tip b { color: var(--gold); }
 
