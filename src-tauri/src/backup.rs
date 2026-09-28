@@ -19,7 +19,6 @@ pub struct BackupEntry {
     pub timestamp: String,
     pub week: Option<u32>,
     pub kind: String, // auto / manual
-    pub path: String,
 }
 
 #[derive(serde::Serialize)]
@@ -27,25 +26,10 @@ pub struct RestoreResult {
     pub cache_deleted: bool,
 }
 
-/// 复制目录（递归）。用于恢复：兼容旧版备份（含子目录）与新备份（仅文件）。
-fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for e in fs::read_dir(src)? {
-        let e = e?;
-        let p = e.path();
-        let d = dst.join(e.file_name());
-        if p.is_dir() {
-            copy_dir(&p, &d)?;
-        } else {
-            fs::copy(&p, &d)?;
-        }
-    }
-    Ok(())
-}
-
-/// 只复制目录下的顶层文件（跳过子目录）。
-/// 官方 profile_N 中的 backup 文件夹（玩家进入游戏时的官方备份）对我们无用，
-/// 因此备份只保存存档文件本身，不包含任何子目录。
+/// 复制目录下的顶层文件（跳过子目录）。
+/// 备份时：官方 profile_N 中的 backup 文件夹（玩家进入游戏时的官方备份）对我们无用，
+/// 因此只保存存档文件本身，不包含任何子目录。
+/// 恢复时：备份目录同样只有顶层文件，直接平铺回 profile_N 顶层即可。
 fn copy_files_only(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for e in fs::read_dir(src)? {
@@ -103,7 +87,6 @@ pub fn backup_profile(remote: &Path, profile: &str, kind: &str) -> Result<Backup
         timestamp: ts,
         week,
         kind: kind.to_string(),
-        path: dst.to_string_lossy().into_owned(),
     })
 }
 
@@ -126,7 +109,7 @@ pub fn restore_profile(
     let _guard = BACKUP_LOCK.lock().map_err(|_| "备份锁占用".to_string())?;
     let target = remote.join(profile);
     clear_dir_keep_savedirs(&target).map_err(|e| format!("清理目标档案失败: {e}"))?;
-    copy_dir(&src, &target).map_err(|e| format!("恢复失败: {e}"))?;
+    copy_files_only(&src, &target).map_err(|e| format!("恢复失败: {e}"))?;
 
     let cache_deleted = match paths::remotecache_path(remote) {
         Some(p) => fs::remove_file(p).is_ok(),
@@ -136,7 +119,7 @@ pub fn restore_profile(
 }
 
 /// 解析备份文件夹名（元数据编码在名字里）。
-fn parse_backup_name(dir: &Path, name: &str) -> Option<BackupEntry> {
+fn parse_backup_name(name: &str) -> Option<BackupEntry> {
     // 格式：2026-09-28_19-00-00_week25_auto
     let parts: Vec<&str> = name.split('_').collect();
     if parts.len() < 4 {
@@ -152,7 +135,6 @@ fn parse_backup_name(dir: &Path, name: &str) -> Option<BackupEntry> {
         timestamp,
         week,
         kind,
-        path: dir.join(name).to_string_lossy().into_owned(),
     })
 }
 
@@ -163,7 +145,7 @@ pub fn list_backups(remote: &Path, profile: &str) -> Vec<BackupEntry> {
     if let Ok(rd) = fs::read_dir(&dir) {
         for e in rd.flatten() {
             if e.path().is_dir() {
-                if let Some(entry) = parse_backup_name(&dir, &e.file_name().to_string_lossy()) {
+                if let Some(entry) = parse_backup_name(&e.file_name().to_string_lossy()) {
                     out.push(entry);
                 }
             }
