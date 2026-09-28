@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { NButton, NModal, NTag, useDialog, useMessage } from "naive-ui";
+import { NButton, NLayout, NLayoutContent, NLayoutHeader, NLayoutSider, NModal, NTag, useDialog, useMessage } from "naive-ui";
 import type { BackupEntry, ProfileInfo, StatusInfo } from "../types";
 import ProfileSidebar from "./ProfileSidebar.vue";
 import BackupPanel from "./BackupPanel.vue";
@@ -33,7 +33,7 @@ async function refreshStatus() {
   try {
     const s: StatusInfo = await invoke("get_status");
     remotePath.value = s.remote_dir
-      ? `存档目录：${s.remote_dir}\n备份保存在各 profile_N 目录内（与官方 backup 同级）`
+      ? `存档目录：${s.remote_dir}\n备份文件夹 DDSL_save 保存在各 profile_N 目录内`
       : "存档目录：未找到（请确认已安装并运行过游戏）";
     gameRunning.value = s.game_running;
     watching.value = s.watching;
@@ -268,8 +268,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-root">
-    <header>
+  <n-layout class="app-root">
+    <n-layout-header class="app-header" bordered>
       <div class="brand">
         <span class="brand-mark">▣</span>
         <div>
@@ -285,18 +285,20 @@ onUnmounted(() => {
           {{ watchStatusText }}
         </n-tag>
       </div>
-    </header>
+    </n-layout-header>
 
-    <main>
-      <ProfileSidebar
-        :profiles="profiles"
-        :current="currentProfile"
-        :path-text="remotePath"
-        @select="selectProfile"
-        @delete-profile="askDeleteProfile"
-      />
+    <n-layout class="app-body" has-sider>
+      <n-layout-sider bordered :width="250" style="height: 100%;" :native-scrollbar="false">
+        <ProfileSidebar
+          :profiles="profiles"
+          :current="currentProfile"
+          :path-text="remotePath"
+          @select="selectProfile"
+          @delete-profile="askDeleteProfile"
+        />
+      </n-layout-sider>
 
-      <section id="detail">
+      <n-layout-content content-class="app-content">
         <div class="detail-head">
           <div class="detail-title">{{ currentProfile ?? "未选择档案" }}</div>
           <div class="detail-actions">
@@ -318,8 +320,8 @@ onUnmounted(() => {
         <div class="tip">
           <b>说明：</b>每周第一个（绿色）为自动存档（回城时触发，每周最多一个）；其余为手动存档。恢复会用所选备份覆盖当前档案且无法撤销，请先确认；恢复前需退出游戏。监控监听存档文件夹变化，与游戏是否运行无关，可随时手动启停。侧栏档案右侧 ✕ 可删除（备份或整个档案）。
         </div>
-      </section>
-    </main>
+      </n-layout-content>
+    </n-layout>
 
     <n-modal v-model:show="showDeleteModal">
       <div class="delete-modal">
@@ -335,5 +337,5 @@ onUnmounted(() => {
         </div>
       </div>
     </n-modal>
-  </div>
+  </n-layout>
 </template>

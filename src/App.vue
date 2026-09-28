@@ -36,6 +36,16 @@ const themeOverrides: GlobalThemeOverrides = {
   Tag: {
     borderRadius: "4px",
   },
+  Layout: {
+    color: "#171310",
+    colorEmbedded: "#171310",
+    headerColor: "#1d1813",
+    headerBorderColor: "#3a2e20",
+    siderColor: "#1d1813",
+    siderBorderColor: "#3a2e20",
+    contentColor: "#171310",
+    fontSize: "14px",
+  },
 };
 </script>
 
@@ -45,6 +55,7 @@ const themeOverrides: GlobalThemeOverrides = {
     :theme-overrides="themeOverrides"
     :locale="zhCN"
     :date-locale="dateZhCN"
+    abstract
   >
     <n-message-provider>
       <n-dialog-provider>
@@ -73,27 +84,24 @@ const themeOverrides: GlobalThemeOverrides = {
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body, #app { height: 100%; }
 
 body {
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
   height: 100vh;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
 }
 
-#app { display: flex; flex-direction: column; }
+/* .app-root { height: 100vh; } */
 
 /* ===== 顶栏 ===== */
-header {
+.app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--line);
+  padding: 0 20px;
+  height: 70px;
   background: var(--bg-3);
   flex-shrink: 0;
 }
@@ -114,25 +122,17 @@ h1 { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
 .status-wrap { display: flex; gap: 8px; }
 
 /* ===== 主区 ===== */
-main {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
+.app-body {  height: calc(100vh - 70px); }
 
 /* 侧栏 */
-#sidebar {
-  width: 250px;
-  border-right: 1px solid var(--line);
-  padding: 16px 14px;
+.sider-inner {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: var(--bg-3);
-  overflow-y: auto;
+  min-height: calc(100vh - 70px);
 }
 .side-title { font-size: 12px; color: var(--gold); font-weight: 600; }
-.profile-list { display: flex; flex-direction: column; gap: 8px; }
+.profile-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
 .profile-card {
   background: var(--bg-2);
   border: 1px solid var(--line);
@@ -165,8 +165,7 @@ main {
 .empty { color: var(--text-faint); font-size: 13px; padding: 8px 0; }
 
 /* 详情区 */
-#detail {
-  flex: 1;
+.app-content {
   display: flex;
   flex-direction: column;
   min-width: 0;

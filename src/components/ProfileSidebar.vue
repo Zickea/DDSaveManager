@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProfileInfo } from "../types";
+import { NButton, NLayout } from "naive-ui";
 
 defineProps<{
   profiles: ProfileInfo[];
@@ -14,8 +15,10 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <aside id="sidebar">
-    <div class="side-title">战役档案（存档位）</div>
+  <n-layout content-style="padding: 16px 14px;" content-class="sider-inner">
+    <div class="side-title">
+      战役档案（存档位）
+    </div>
     <div id="profile-list" class="profile-list">
       <div v-if="profiles.length === 0" class="empty">
         未找到任何档案（profile_N），请先进入游戏创建战役
@@ -44,5 +47,5 @@ const emit = defineEmits<{
       </div>
     </div>
     <div class="side-path">{{ pathText }}</div>
-  </aside>
+  </n-layout>
 </template>
