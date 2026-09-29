@@ -43,12 +43,17 @@ pub struct RestoreResult {
 /// 备份时：官方 profile_N 中的 backup 文件夹（玩家进入游戏时的官方备份）对我们无用，
 /// 因此只保存存档文件本身，不包含任何子目录。
 /// 恢复时：备份目录同样只有顶层文件，直接平铺回 profile_N 顶层即可。
+/// note.txt 是本工具的备份备注元数据，不属于游戏存档：备份/恢复一律跳过，
+/// 防止手动备注经"恢复 → 档案顶层 → 自动备份"的链路污染自动存档（实测 bug）。
 fn copy_files_only(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for e in fs::read_dir(src)? {
         let e = e?;
         let p = e.path();
         if p.is_file() {
+            if p.file_name().map(|n| n == "note.txt").unwrap_or(false) {
+                continue;
+            }
             fs::copy(&p, dst.join(e.file_name()))?;
         }
     }
@@ -194,7 +199,8 @@ fn parse_backup_name(name: &str) -> Option<BackupEntry> {
 }
 
 /// 列出某档案的所有备份（位于 profile_N\DDSL_save 下），按名称字典序降序（即时间降序，格式统一）。
-/// 每个条目读取目录内 note.txt 作为备注（缺失则为 None）。
+/// 手动档读取目录内 note.txt 作为备注（缺失则为 None）；
+/// auto 档不展示备注——auto 档本无备注功能，历史污染的 note.txt 一律忽略。
 pub fn list_backups(remote: &Path, profile: &str) -> Vec<BackupEntry> {
     let mut out = Vec::new();
     let dir = remote.join(profile).join(SAVE_DIR);
@@ -202,10 +208,14 @@ pub fn list_backups(remote: &Path, profile: &str) -> Vec<BackupEntry> {
         for e in rd.flatten() {
             if e.path().is_dir() {
                 if let Some(mut entry) = parse_backup_name(&e.file_name().to_string_lossy()) {
-                    entry.note = fs::read_to_string(e.path().join("note.txt"))
-                        .ok()
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty());
+                    entry.note = if entry.kind == "auto" {
+                        None
+                    } else {
+                        fs::read_to_string(e.path().join("note.txt"))
+                            .ok()
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                    };
                     out.push(entry);
                 }
             }
@@ -492,5 +502,47 @@ mod tests {
         // 删除后回到城镇
         std::fs::remove_file(remote.join("profile_0").join(RAID_SIGNAL)).unwrap();
         assert!(!is_in_raid(&remote, "profile_0"));
+    }
+
+    #[test]
+    fn note_not_copied_into_auto_backups() {
+        let remote = temp_remote("notechain");
+        // 手动备份带备注
+        let manual = backup_profile(&remote, "profile_0", "manual", Some("打 Boss 前")).unwrap();
+        assert_eq!(manual.note.as_deref(), Some("打 Boss 前"));
+        // 模拟恢复的复制路径（restore_profile 内部同用 copy_files_only）：
+        // 备份目录内容（含 note.txt）铺回 profile_N 顶层时，note.txt 不应被带过去
+        copy_files_only(
+            &remote.join("profile_0").join(SAVE_DIR).join(&manual.name),
+            &remote.join("profile_0"),
+        )
+        .unwrap();
+        assert!(!remote.join("profile_0").join("note.txt").exists());
+        // 后续自动备份不应携带备注（防止"恢复→顶层残留→自动备份"污染链）
+        let auto = backup_profile(&remote, "profile_0", "auto", None).unwrap();
+        assert!(auto.note.is_none());
+        assert!(!remote
+            .join("profile_0")
+            .join(SAVE_DIR)
+            .join(&auto.name)
+            .join("note.txt")
+            .exists());
+    }
+
+    #[test]
+    fn auto_backup_ignores_stale_note() {
+        let remote = temp_remote("autonote");
+        // 构造一个"被污染"的 auto 档（目录里残留 note.txt，来自旧的污染链）
+        let dir = remote
+            .join("profile_0")
+            .join(SAVE_DIR)
+            .join("2026-09-28_19-00-00_week01_auto");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("note.txt"), "强退恢复测试").unwrap();
+        // auto 档不应展示备注
+        let listed = list_backups(&remote, "profile_0");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].kind, "auto");
+        assert!(listed[0].note.is_none());
     }
 }
