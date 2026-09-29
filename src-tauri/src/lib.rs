@@ -119,6 +119,29 @@ fn list_backups(state: tauri::State<AppState>, profile: String) -> Vec<backup::B
     backup::list_backups(remote, &profile)
 }
 
+/// 恢复前预检：返回档案是否处于副本残留状态、Steam 客户端是否在运行。
+/// 前端据此在确认框里预告"恢复后需完全退出 Steam"，避免恢复后直接启动游戏坏档。
+#[tauri::command]
+fn preflight_restore(
+    state: tauri::State<AppState>,
+    profile: String,
+) -> Result<PreflightRestore, String> {
+    let remote = state
+        .remote_dir
+        .clone()
+        .ok_or_else(|| "未找到暗黑地牢存档目录".to_string())?;
+    Ok(PreflightRestore {
+        in_raid: backup::is_in_raid(&remote, &profile),
+        steam_running: backup::steam_running(),
+    })
+}
+
+#[derive(serde::Serialize)]
+struct PreflightRestore {
+    in_raid: bool,
+    steam_running: bool,
+}
+
 #[tauri::command]
 async fn restore_backup(
     state: tauri::State<'_, AppState>,
@@ -343,6 +366,7 @@ pub fn run() {
             get_profiles,
             manual_backup,
             list_backups,
+            preflight_restore,
             restore_backup,
             delete_backup,
             clear_profile_backups,

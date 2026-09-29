@@ -143,7 +143,7 @@ async function confirmManualBackup() {
   }
 }
 
-function restoreBackup() {
+async function restoreBackup() {
   if (!currentProfile.value || !selectedBackup.value) return;
   // 回退提示：受设置 confirm_rollback 控制；只有当前周与备份周都可读时才计算
   const profile = profiles.value.find((p) => p.name === currentProfile.value);
@@ -159,9 +159,23 @@ function restoreBackup() {
       rollback = `\n备份与当前同为第 ${profile.week} 周（属于同一周的进度，回退意义有限）。`;
     }
   }
+  // 恢复前预检：副本残留 + Steam 运行时，在确认框里就预告"恢复后需重启 Steam"
+  let steamTip = "";
+  try {
+    const pf = await invoke<{ in_raid: boolean; steam_running: boolean }>("preflight_restore", {
+      profile: currentProfile.value,
+    });
+    if (pf.in_raid) {
+      steamTip = pf.steam_running
+        ? "\n⚠ 该档案处于未结算副本状态，且 Steam 客户端正在运行：恢复后必须先完全退出 Steam 再启动游戏，否则会加载失败。"
+        : "\n⚠ 该档案处于未结算副本状态（上次副本中退出）：恢复后请先完全退出 Steam 再启动游戏，否则会加载失败。";
+    }
+  } catch (_) {
+    // 预检失败不影响恢复主流程
+  }
   dialog.warning({
     title: "恢复存档",
-    content: `用「${selectedBackup.value}」恢复 ${currentProfile.value}？${rollback}\n此操作会用所选备份覆盖当前档案，无法撤销。请确认已不需要当前进度（如需保留请先手动备份）。`,
+    content: `用「${selectedBackup.value}」恢复 ${currentProfile.value}？${rollback}${steamTip}\n此操作会用所选备份覆盖当前档案，无法撤销。请确认已不需要当前进度（如需保留请先手动备份）。`,
     positiveText: "确认恢复",
     negativeText: "取消",
     onPositiveClick: async () => {

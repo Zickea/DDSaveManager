@@ -294,20 +294,24 @@ pub fn delete_profile(remote: &Path, profile: &str) -> Result<(), String> {
 }
 
 /// 进程检测结果缓存：5 秒内复用，避免频繁启动 tasklist 子进程（黑窗闪现与卡顿的根源）。
-static GAME_CACHE: std::sync::Mutex<Option<(std::time::Instant, bool)>> = std::sync::Mutex::new(None);
+/// 缓存同时记录进程名，使游戏/Steam 两个检测共用一份缓存互不干扰。
+static PROC_CACHE: std::sync::Mutex<Option<(std::time::Instant, String, bool)>> =
+    std::sync::Mutex::new(None);
 
-fn detect_game() -> bool {
+fn detect_process(name: &str) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         if let Ok(out) = std::process::Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq Darkest.exe", "/NH"])
             // CREATE_NO_WINDOW：不创建控制台窗口（避免每次查询弹出黑色命令窗）
             .creation_flags(0x0800_0000)
+            .arg("/FI")
+            .arg(format!("IMAGENAME eq {name}"))
+            .arg("/NH")
             .output()
         {
             let s = String::from_utf8_lossy(&out.stdout);
-            return s.contains("Darkest.exe");
+            return s.contains(name);
         }
     }
     #[cfg(not(windows))]
@@ -317,26 +321,36 @@ fn detect_game() -> bool {
     false
 }
 
+/// 检测指定进程是否运行（5 秒缓存）。
+fn process_running(name: &str) -> bool {
+    let now = std::time::Instant::now();
+    if let Ok(mut cache) = PROC_CACHE.lock() {
+        if let Some((t, n, v)) = cache.as_ref() {
+            if n == name && now.duration_since(*t) < std::time::Duration::from_secs(5) {
+                return *v;
+            }
+        }
+        let v = detect_process(name);
+        *cache = Some((now, name.to_string(), v));
+        return v;
+    }
+    detect_process(name)
+}
+
+/// 游戏进程是否运行。
+pub fn game_running() -> bool {
+    process_running("Darkest.exe")
+}
+
+/// Steam 客户端是否运行（恢复副本残留档案后需要完全退出 Steam 才能启动游戏）。
+pub fn steam_running() -> bool {
+    process_running("steam.exe")
+}
+
 /// 检测档案是否处于副本（未结算）状态：副本信号文件 persist.raid.json 存在即为副本中。
 /// 副本状态（含强退残留）下禁止手动备份与恢复城镇档——见 RAID_SIGNAL 注释的坏档原因。
 pub fn is_in_raid(remote: &Path, profile: &str) -> bool {
     remote.join(profile).join(RAID_SIGNAL).exists()
-}
-
-/// 检测游戏进程是否运行（Darkest.exe），结果缓存 5 秒。
-pub fn game_running() -> bool {
-    let now = std::time::Instant::now();
-    if let Ok(mut cache) = GAME_CACHE.lock() {
-        if let Some((t, v)) = *cache {
-            if now.duration_since(t) < std::time::Duration::from_secs(5) {
-                return v;
-            }
-        }
-        let v = detect_game();
-        *cache = Some((now, v));
-        return v;
-    }
-    detect_game()
 }
 
 #[cfg(test)]
