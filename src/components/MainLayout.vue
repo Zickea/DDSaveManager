@@ -133,9 +133,23 @@ async function manualBackup() {
 
 function restoreBackup() {
   if (!currentProfile.value || !selectedBackup.value) return;
+  // 回退提示：受设置 confirm_rollback 控制；只有当前周与备份周都可读时才计算
+  const profile = profiles.value.find((p) => p.name === currentProfile.value);
+  const backup = backups.value.find((b) => b.name === selectedBackup.value);
+  let rollback = "";
+  if (settings.value?.confirm_rollback && profile?.week != null && backup?.week != null) {
+    const diff = profile.week - backup.week;
+    if (diff > 0) {
+      rollback = `\n将回退 ${diff} 周（当前第 ${profile.week} 周 → 备份第 ${backup.week} 周）。`;
+    } else if (diff < 0) {
+      rollback = `\n注意：该备份比当前进度新 ${-diff} 周（备份第 ${backup.week} 周 → 当前第 ${profile.week} 周）。`;
+    } else {
+      rollback = `\n备份与当前同为第 ${profile.week} 周（属于同一周的进度，回退意义有限）。`;
+    }
+  }
   dialog.warning({
     title: "恢复存档",
-    content: `用「${selectedBackup.value}」恢复 ${currentProfile.value}？\n此操作会用所选备份覆盖当前档案，无法撤销。请确认已不需要当前进度（如需保留请先手动备份）。`,
+    content: `用「${selectedBackup.value}」恢复 ${currentProfile.value}？${rollback}\n此操作会用所选备份覆盖当前档案，无法撤销。请确认已不需要当前进度（如需保留请先手动备份）。`,
     positiveText: "确认恢复",
     negativeText: "取消",
     onPositiveClick: async () => {
