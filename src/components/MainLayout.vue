@@ -83,6 +83,15 @@ function selectBackup(name: string) {
 }
 
 /* ========== 动作 ========== */
+async function launchGame() {
+  try {
+    await invoke("launch_game");
+    message.success("已请求启动《暗黑地牢》（Steam 拉起中）");
+  } catch (e) {
+    message.error(String(e));
+  }
+}
+
 async function manualBackup() {
   if (!currentProfile.value) return;
   try {
@@ -276,6 +285,9 @@ onUnmounted(() => {
           <h1>暗黑地牢 存档管家</h1>
           <p class="sub">Darkest Dungeon Save Manager</p>
         </div>
+        <n-button size="small" :disabled="gameRunning" @click="launchGame">
+          运行《暗黑地牢》
+        </n-button>
       </div>
       <div class="status-wrap">
         <n-tag :type="gameRunning ? 'warning' : 'success'" size="small" :bordered="false">

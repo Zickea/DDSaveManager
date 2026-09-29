@@ -181,6 +181,31 @@ fn stop_watchers(state: tauri::State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// 通过 Steam 协议拉起《暗黑地牢》（AppID 262060），Steam 未运行时也会先启动 Steam。
+/// 不直接启动 Darkest.exe：避免绕过 Steam 层（DLC/成就/云同步/DRM 校验）。
+#[tauri::command]
+fn launch_game() -> Result<(), String> {
+    if backup::game_running() {
+        return Err("游戏已在运行中".into());
+    }
+    launch_via_steam()
+}
+
+#[cfg(windows)]
+fn launch_via_steam() -> Result<(), String> {
+    // explorer 会把 steam:// 协议 URI 交给系统注册的处理器（Steam 客户端）
+    std::process::Command::new("explorer")
+        .arg("steam://rungameid/262060")
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("启动游戏失败: {e}"))
+}
+
+#[cfg(not(windows))]
+fn launch_via_steam() -> Result<(), String> {
+    Err("仅支持 Windows".into())
+}
+
 /// 在文件资源管理器中打开存档根目录（不接收前端传入路径，只打开自身定位的 remote 目录，防注入）。
 #[tauri::command]
 fn open_remote_dir(state: tauri::State<AppState>) -> Result<(), String> {
@@ -218,7 +243,8 @@ pub fn run() {
             delete_profile,
             start_watchers,
             stop_watchers,
-            open_remote_dir
+            open_remote_dir,
+            launch_game
         ])
         .setup(|app| {
             // 应用启动即自动开启监控（用户无需手动点按钮）
