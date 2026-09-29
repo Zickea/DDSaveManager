@@ -29,6 +29,28 @@ StorageManager::TransferFile ... didn't read whole file?
 
 正常流程（不进副本就退出游戏）不需要这一步。
 
+> 补充：**建议在 Steam 客户端中关闭《暗黑地牢》的云同步**（游戏库 → 右键暗黑地牢 → 属性 → 云同步）。
+> 注意：即使关闭云同步，上述"副本强退后恢复必须重启 Steam"的规则**依然生效**——坏档的根源是
+> 游戏代码直连 Steamworks 云存储校验文件大小，与客户端云同步开关无关（已实测确认）。
+> 关闭云同步的意义在于避免 Steam 自动上传/下载干扰本地备份文件。
+
+### 强烈建议：关闭《暗黑地牢》的 Steam 云同步
+
+Steam 客户端 → 库 → 《暗黑地牢》→ 右键 → 属性 → 云同步 → 取消勾选
+「将 Darkest Dungeon® 的游戏存档保存于 Steam 云」。
+
+开着云同步时，Steam 可能自动把云端旧存档拉回本地（或把本地状态传上去），覆盖你刚恢复的存档，
+导致读档失效。关闭后存档文件完全由本工具掌控。
+
+注意：**关闭云同步并不能替代上面"重启 Steam"的步骤**，两者是不同机制：
+
+| 措施 | 作用 | 能否互相替代 |
+|---|---|---|
+| 关闭 Steam 云同步 | 阻止 Steam 自动上传/下载干扰读档 | 否 |
+| 完全退出 Steam 再启动 | 清掉客户端内存里残留的副本中途文件大小清单（即使云同步关闭它也一直存在） | 否 |
+
+两个都要做：先关云同步，副本强退后恢复存档时再重启 Steam。
+
 ---
 
 ## 功能特性
@@ -102,6 +124,9 @@ npm run tauri build
 - 本工具与游戏官方 `backup` 文件夹互不干扰；请勿在游戏运行时手动恢复（工具已拦截）
 - 存档安全性：工具只读取/复制/替换存档文件，不修改存档内容；但**恢复操作不可撤销**，
   请在恢复前确认不需要当前进度（或先手动备份）
+- **删除战役档案请使用本应用**（侧栏档案右侧的 ×，会连同备份文件夹一并删除）。
+  由于每个档案目录下带有我们的 `DDSL_save` 备份文件夹，**在游戏内删除战役会失败**
+  （游戏无法完整删除该档案目录），残留目录还会被游戏当作异常处理。
 
 ## 免责声明
 
@@ -125,4 +150,7 @@ Steam version of *Darkest Dungeon*.
 - **Important**: if you quit mid-quest and restore a town save, **fully quit the Steam
   client before launching the game** — otherwise Steamworks cloud-storage size checks fail
   (`StorageManager::TransferFile ... didn't read whole file?`) and the game won't load.
+  (Disabling Steam cloud sync is recommended, but does **not** remove this requirement.)
+- **Delete campaigns from this app** (the × next to a profile), not from inside the game —
+  the game cannot fully remove a profile folder that contains the DDSL_save backup folder.
 - Windows only. Local-only, no telemetry. Built with Rust + Tauri 2 + Vue 3.
