@@ -20,3 +20,9 @@ export interface BackupEntry {
 export interface RestoreResult {
   cache_deleted: boolean;
 }
+
+export interface Settings {
+  auto_start: boolean;
+  keep_auto_weeks: number;
+  confirm_rollback: boolean;
+}

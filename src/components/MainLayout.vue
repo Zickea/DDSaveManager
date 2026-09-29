@@ -2,8 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { NButton, NLayout, NLayoutContent, NLayoutHeader, NLayoutSider, NModal, NTag, useDialog, useMessage } from "naive-ui";
-import type { BackupEntry, ProfileInfo, StatusInfo } from "../types";
+import { NButton, NDrawer, NDrawerContent, NInputNumber, NLayout, NLayoutContent, NLayoutHeader, NLayoutSider, NModal, NSwitch, NTag, useDialog, useMessage } from "naive-ui";
+import type { BackupEntry, ProfileInfo, Settings, StatusInfo } from "../types";
 import ProfileSidebar from "./ProfileSidebar.vue";
 import BackupPanel from "./BackupPanel.vue";
 
@@ -27,6 +27,32 @@ const watchStatusText = computed(() =>
 const watchBtnText = computed(() => (watching.value.length > 0 ? "停止监控" : "启动监控"));
 
 const backups = ref<BackupEntry[]>([]);
+
+/* ========== 设置 ========== */
+const showSettings = ref(false);
+const settings = ref<Settings | null>(null);
+
+async function loadSettings() {
+  try {
+    settings.value = await invoke<Settings>("get_settings");
+  } catch (e) {
+    console.error("get_settings:", e);
+  }
+}
+
+async function saveSettings(next: Settings) {
+  settings.value = next;
+  try {
+    await invoke("set_settings", { settings: next });
+  } catch (e) {
+    message.error(String(e));
+  }
+}
+
+// 以当前设置为底合并局部修改（保证类型完整）
+function patchSettings(patch: Partial<Settings>): Settings {
+  return { auto_start: false, keep_auto_weeks: 0, confirm_rollback: true, ...settings.value, ...patch };
+}
 
 /* ========== 状态 ========== */
 async function refreshStatus() {
@@ -257,6 +283,7 @@ onMounted(async () => {
   await setupEvents();
   await refreshStatus();
   await refreshProfiles();
+  await loadSettings();
   // 启动兜底：应用侧已自动启动监控，此处幂等确保生效
   try {
     await invoke("start_watchers");
@@ -289,13 +316,16 @@ onUnmounted(() => {
           运行《暗黑地牢》
         </n-button>
       </div>
-      <div class="status-wrap">
-        <n-tag :type="gameRunning ? 'warning' : 'success'" size="small" :bordered="false">
-          {{ gameRunning ? "⚠ 游戏运行中（恢复前需退出）" : "游戏未运行" }}
-        </n-tag>
-        <n-tag :type="watchStatusKind" size="small" :bordered="false">
-          {{ watchStatusText }}
-        </n-tag>
+      <div class="header-right">
+        <n-button size="small" quaternary @click="showSettings = true">设置</n-button>
+        <div class="status-wrap">
+          <n-tag :type="gameRunning ? 'warning' : 'success'" size="small" :bordered="false">
+            {{ gameRunning ? "⚠ 游戏运行中（恢复前需退出）" : "游戏未运行" }}
+          </n-tag>
+          <n-tag :type="watchStatusKind" size="small" :bordered="false">
+            {{ watchStatusText }}
+          </n-tag>
+        </div>
       </div>
     </n-layout-header>
 
@@ -349,5 +379,55 @@ onUnmounted(() => {
         </div>
       </div>
     </n-modal>
+
+    <n-drawer v-model:show="showSettings" placement="right" :width="340">
+      <n-drawer-content title="设置" closable>
+        <div class="settings-list">
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-name">开机自启</div>
+              <div class="setting-desc">Windows 登录后自动启动并监控存档</div>
+            </div>
+            <n-switch
+              :value="settings?.auto_start"
+              @update:value="(v) => saveSettings(patchSettings({ auto_start: v }))"
+            />
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-name">自动备份保留</div>
+              <div class="setting-desc">只保留最近 N 周的自动档（0 = 全部保留；手动档始终保留）</div>
+            </div>
+            <n-input-number
+              :value="settings?.keep_auto_weeks ?? 0"
+              :min="0"
+              :max="999"
+              size="small"
+              style="width: 96px"
+              @update:value="(v) => saveSettings(patchSettings({ keep_auto_weeks: v ?? 0 }))"
+            />
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-name">恢复前回退提示</div>
+              <div class="setting-desc">恢复旧周存档时，提示将回退多少周</div>
+            </div>
+            <n-switch
+              :value="settings?.confirm_rollback"
+              @update:value="(v) => saveSettings(patchSettings({ confirm_rollback: v }))"
+            />
+          </div>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
   </n-layout>
 </template>
+
+<style scoped>
+.header-right { display: flex; align-items: center; gap: 10px; }
+.settings-list { display: flex; flex-direction: column; gap: 20px; }
+.setting-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.setting-label { flex: 1; min-width: 0; }
+.setting-name { font-size: 13px; color: var(--text); }
+.setting-desc { font-size: 11px; color: var(--text-faint); margin-top: 3px; line-height: 1.5; }
+</style>

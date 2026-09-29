@@ -2,6 +2,7 @@
 mod backup;
 mod paths;
 mod profiles;
+mod settings;
 mod watcher;
 mod week;
 
@@ -20,6 +21,7 @@ static EXITING: AtomicBool = AtomicBool::new(false);
 pub struct AppState {
     pub remote_dir: Option<PathBuf>,
     pub watchers: Mutex<HashMap<String, notify::RecommendedWatcher>>,
+    pub settings: Mutex<settings::Settings>,
 }
 
 impl AppState {
@@ -27,6 +29,7 @@ impl AppState {
         Self {
             remote_dir: paths::locate_remote_dir(),
             watchers: Mutex::new(HashMap::new()),
+            settings: Mutex::new(settings::load()),
         }
     }
 }
@@ -212,6 +215,29 @@ fn launch_via_steam() -> Result<(), String> {
     Err("仅支持 Windows".into())
 }
 
+#[tauri::command]
+fn get_settings(state: tauri::State<AppState>) -> settings::Settings {
+    state
+        .settings
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn set_settings(
+    state: tauri::State<AppState>,
+    settings: settings::Settings,
+) -> Result<(), String> {
+    // 先应用开机自启（注册表操作），失败则不保存，避免设置与系统状态不一致
+    settings::apply_auto_start(settings.auto_start)?;
+    *state
+        .settings
+        .lock()
+        .map_err(|_| "设置锁占用".to_string())? = settings.clone();
+    settings::save(&settings)
+}
+
 /// 在文件资源管理器中打开存档根目录（不接收前端传入路径，只打开自身定位的 remote 目录，防注入）。
 #[tauri::command]
 fn open_remote_dir(state: tauri::State<AppState>) -> Result<(), String> {
@@ -301,7 +327,9 @@ pub fn run() {
             start_watchers,
             stop_watchers,
             open_remote_dir,
-            launch_game
+            launch_game,
+            get_settings,
+            set_settings
         ])
         .on_window_event(|window, event| {
             // 关闭主窗口 = 隐藏到托盘继续运行；仅当托盘「退出」置位时才真正关闭
