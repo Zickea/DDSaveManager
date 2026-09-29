@@ -285,6 +285,10 @@ fn show_main_window(app: &AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::new())
+        // 单实例：重复启动时唤醒已有实例的主窗口，不创建第二个进程
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            show_main_window(app);
+        }))
         .invoke_handler(tauri::generate_handler![
             get_status,
             get_profiles,
