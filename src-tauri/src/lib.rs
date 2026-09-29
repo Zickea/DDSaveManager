@@ -1,5 +1,6 @@
 //! 暗黑地牢1 存档管家：Tauri 2 应用主入口。
 mod backup;
+mod dson;
 mod paths;
 mod profiles;
 mod settings;
@@ -38,6 +39,8 @@ impl AppState {
 struct ProfileInfo {
     name: String,
     week: Option<u32>,
+    #[serde(flatten)]
+    meta: profiles::ProfileMeta,
 }
 
 #[derive(serde::Serialize)]
@@ -70,6 +73,7 @@ fn get_profiles(state: tauri::State<AppState>) -> Vec<ProfileInfo> {
         .into_iter()
         .map(|name| ProfileInfo {
             week: profiles::current_week(remote, &name),
+            meta: profiles::profile_meta(remote, &name),
             name,
         })
         .collect()

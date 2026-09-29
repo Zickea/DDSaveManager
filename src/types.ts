@@ -2,6 +2,10 @@
 export interface ProfileInfo {
   name: string;
   week: number | null;
+  estate_name: string | null;
+  game_mode: string | null;
+  hero_count: number | null;
+  dead_count: number | null;
 }
 
 export interface StatusInfo {
