@@ -77,8 +77,13 @@ pub fn apply_auto_start(enabled: bool) -> Result<(), String> {
             key.set_value("DDSaveManager", &format!("\"{}\"", exe.to_string_lossy()))
                 .map_err(|e| format!("写入开机自启失败: {e}"))?;
         } else {
-            key.delete_value("DDSaveManager")
-                .map_err(|e| format!("关闭开机自启失败: {e}"))?;
+            // 值不存在（从未启用过 / 已被删）时 delete_value 返回 ERROR_FILE_NOT_FOUND，
+            // 应视为"已关闭"的幂等成功，而不是错误
+            match key.delete_value("DDSaveManager") {
+                Ok(_) => {}
+                Err(e) if e.raw_os_error() == Some(2) => {}
+                Err(e) => return Err(format!("关闭开机自启失败: {e}")),
+            }
         }
         Ok(())
     }
