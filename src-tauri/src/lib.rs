@@ -1,6 +1,7 @@
 //! 暗黑地牢1 存档管家：Tauri 2 应用主入口。
 mod backup;
 mod dson;
+mod logger;
 mod paths;
 mod profiles;
 mod settings;
@@ -15,6 +16,15 @@ use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, WindowEvent};
+
+/// 统一日志：stderr + 落盘（%APPDATA%\com.ddsl.savemanager\dd-save-manager.log）。
+/// 正式版（windows_subsystem）无控制台，stderr 被静默丢弃，必须依赖文件日志。
+#[macro_export]
+macro_rules! dlog {
+    ($($arg:tt)*) => {
+        $crate::logger::log(&format!($($arg)*))
+    };
+}
 
 /// 退出标志：置位后允许窗口关闭并退出进程（托盘「退出」菜单置位后 app.exit）。
 static EXITING: AtomicBool = AtomicBool::new(false);
@@ -172,7 +182,7 @@ fn start_all_watchers(app: AppHandle, state: &AppState) -> Result<Vec<String>, S
                 watching.push(profile.clone());
             }
             Err(e) => {
-                eprintln!("watcher {profile} 启动失败: {e}");
+                crate::dlog!("watcher {profile} 启动失败: {e}");
             }
         }
     }
@@ -345,9 +355,11 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // 日志落盘初始化（必须在任何日志输出前调用）
+            logger::init();
             // 系统托盘（关闭窗口后常驻后台）
             if let Err(e) = setup_tray(app) {
-                eprintln!("托盘初始化失败: {e}");
+                crate::dlog!("托盘初始化失败: {e}");
             }
             // 应用启动即自动开启监控（用户无需手动点按钮）
             let handle = app.handle().clone();

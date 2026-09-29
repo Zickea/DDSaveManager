@@ -5,7 +5,7 @@ use std::path::Path;
 
 use chrono::Local;
 
-use crate::{paths, profiles, week};
+use crate::{dlog, paths, profiles, week};
 
 /// 备份存放的子目录名（位于各 profile_N 下，与官方 backup 同级）。
 const SAVE_DIR: &str = "DDSL_save";
@@ -82,7 +82,7 @@ pub fn backup_profile(remote: &Path, profile: &str, kind: &str) -> Result<Backup
     let dst = src.join(SAVE_DIR).join(&dir_name); // 备份统一放在 profile_N\DDSL_save 下
     // 只备份存档文件本身（不包含子目录，如官方 backup 文件夹、其他备份）
     copy_files_only(&src, &dst).map_err(|e| {
-        eprintln!("[backup] {profile} 复制失败（{kind}）: {e}");
+        dlog!("[backup] {profile} 复制失败（{kind}）: {e}");
         format!("备份失败: {e}")
     })?;
     Ok(BackupEntry {
@@ -123,16 +123,24 @@ pub fn restore_profile(
 
 /// 解析备份文件夹名（元数据编码在名字里）。
 fn parse_backup_name(name: &str) -> Option<BackupEntry> {
-    // 格式：2026-09-28_19-00-00_week25_auto
+    // 格式：2026-09-28_19-00-00_week25_auto 或 ..._week_unknown_auto（周数不可读）
     let parts: Vec<&str> = name.split('_').collect();
     if parts.len() < 4 {
         return None;
     }
     let timestamp = format!("{}_{}", parts[0], parts[1]);
-    let week = parts[2]
-        .strip_prefix("week")
-        .and_then(|s| s.parse::<u32>().ok());
-    let kind = parts[3].to_string();
+    // weekNN 正常形态；week_unknown 会拆成 ["week", "unknown", kind] 三段
+    let (week, kind) = if parts[2] == "week" {
+        (
+            None,
+            parts.get(4).map(|s| s.to_string()).unwrap_or_default(),
+        )
+    } else {
+        (
+            parts[2].strip_prefix("week").and_then(|s| s.parse::<u32>().ok()),
+            parts.get(3).map(|s| s.to_string()).unwrap_or_default(),
+        )
+    };
     Some(BackupEntry {
         name: name.to_string(),
         timestamp,
@@ -190,7 +198,7 @@ pub fn prune_auto_backups(remote: &Path, profile: &str, keep_weeks: u32) {
         if let Some(w) = b.week {
             if !keep.contains(&w) {
                 if let Err(e) = delete_backup(remote, profile, &b.name) {
-                    eprintln!("[backup] {profile} 清理旧自动档 {0} 失败: {e}", b.name);
+                    dlog!("[backup] {profile} 清理旧自动档 {0} 失败: {e}", b.name);
                 }
             }
         }
@@ -274,4 +282,109 @@ pub fn game_running() -> bool {
         return v;
     }
     detect_game()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 构造一个测试专用的 remote 目录骨架（tag 保证并行测试互不污染）。
+    fn temp_remote(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("ddsl_test_{tag}_{}", std::process::id()));
+        let profile = dir.join("profile_0");
+        std::fs::create_dir_all(profile.join(SAVE_DIR)).unwrap();
+        // 构造"游戏存档"占位文件，使 backup_profile 有内容可复制
+        std::fs::write(profile.join("persist.game.json"), b"x").unwrap();
+        dir
+    }
+
+    fn mk_backup(remote: &Path, name: &str) {
+        let dir = remote.join("profile_0").join(SAVE_DIR).join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("persist.game.json"), b"x").unwrap();
+    }
+
+    #[test]
+    fn parse_backup_name_normal() {
+        let e = parse_backup_name("2026-09-28_19-00-00_week25_auto").unwrap();
+        assert_eq!(e.timestamp, "2026-09-28_19-00-00");
+        assert_eq!(e.week, Some(25));
+        assert_eq!(e.kind, "auto");
+    }
+
+    #[test]
+    fn parse_backup_name_unknown_week() {
+        let e = parse_backup_name("2026-09-28_19-00-00_week_unknown_manual").unwrap();
+        assert_eq!(e.week, None);
+        assert_eq!(e.kind, "manual");
+        // week_unknown 的 auto 档也要正确识别为 auto
+        let e = parse_backup_name("2026-09-28_19-00-00_week_unknown_auto").unwrap();
+        assert_eq!(e.kind, "auto");
+    }
+
+    #[test]
+    fn parse_backup_name_invalid() {
+        assert!(parse_backup_name("random_dir").is_none());
+        assert!(parse_backup_name("2026-09-28_19-00-00_week25").is_none());
+    }
+
+    #[test]
+    fn list_backups_sorted_desc() {
+        let remote = temp_remote("list");
+        mk_backup(&remote, "2026-09-28_19-00-00_week01_auto");
+        mk_backup(&remote, "2026-09-30_10-00-00_week03_auto");
+        mk_backup(&remote, "2026-09-29_08-00-00_week02_manual");
+        let list = list_backups(&remote, "profile_0");
+        let names: Vec<&str> = list.iter().map(|b| b.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "2026-09-30_10-00-00_week03_auto",
+                "2026-09-29_08-00-00_week02_manual",
+                "2026-09-28_19-00-00_week01_auto"
+            ]
+        );
+    }
+
+    #[test]
+    fn has_auto_for_week_dedup() {
+        let remote = temp_remote("dedup");
+        mk_backup(&remote, "2026-09-28_19-00-00_week05_auto");
+        assert!(has_auto_for_week(&remote, "profile_0", 5));
+        assert!(!has_auto_for_week(&remote, "profile_0", 6));
+        // 手动档不算 auto
+        mk_backup(&remote, "2026-09-29_08-00-00_week05_manual");
+        assert!(has_auto_for_week(&remote, "profile_0", 5));
+    }
+
+    #[test]
+    fn prune_keeps_recent_and_manual() {
+        let remote = temp_remote("prune");
+        mk_backup(&remote, "2026-09-28_19-00-00_week01_auto");
+        mk_backup(&remote, "2026-09-29_08-00-00_week02_auto");
+        mk_backup(&remote, "2026-09-30_10-00-00_week03_auto");
+        mk_backup(&remote, "2026-09-28_20-00-00_week01_manual");
+        mk_backup(&remote, "2026-09-28_21-00-00_week_unknown_auto");
+
+        prune_auto_backups(&remote, "profile_0", 1); // 只保留最近 1 个不同周的 auto
+
+        let remaining: Vec<String> = list_backups(&remote, "profile_0")
+            .into_iter()
+            .map(|b| b.name)
+            .collect();
+        assert!(remaining.contains(&"2026-09-30_10-00-00_week03_auto".to_string()));
+        assert!(remaining.contains(&"2026-09-28_20-00-00_week01_manual".to_string()));
+        assert!(remaining.contains(&"2026-09-28_21-00-00_week_unknown_auto".to_string()));
+        assert!(!remaining.contains(&"2026-09-28_19-00-00_week01_auto".to_string()));
+        assert!(!remaining.contains(&"2026-09-29_08-00-00_week02_auto".to_string()));
+    }
+
+    #[test]
+    fn prune_zero_keeps_all() {
+        let remote = temp_remote("prune0");
+        mk_backup(&remote, "2026-09-28_19-00-00_week01_auto");
+        mk_backup(&remote, "2026-09-29_08-00-00_week02_auto");
+        prune_auto_backups(&remote, "profile_0", 0); // 0 = 不清理
+        assert_eq!(list_backups(&remote, "profile_0").len(), 2);
+    }
 }

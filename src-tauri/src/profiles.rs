@@ -52,3 +52,35 @@ pub fn profile_meta(remote: &Path, profile: &str) -> ProfileMeta {
         dead_count: dson::file_u32(&roster, b"dismissed_hero_count"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 临时目录构造 remote：profile_0、profile_1 是合法存档位；
+    /// profile_9（非存档位）、profile_10（超范围）、random（不匹配）都应被排除。
+    fn temp_remote() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("ddsl_test_profiles_{}", std::process::id()));
+        for name in ["profile_0", "profile_1", "profile_9", "profile_10", "random"] {
+            std::fs::create_dir_all(dir.join(name)).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn list_only_official_slots() {
+        let remote = temp_remote();
+        assert_eq!(
+            list_profiles(&remote),
+            vec!["profile_0".to_string(), "profile_1".to_string()]
+        );
+    }
+
+    #[test]
+    fn empty_remote_returns_empty() {
+        let dir = std::env::temp_dir().join(format!("ddsl_test_empty_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(list_profiles(&dir).is_empty());
+    }
+}

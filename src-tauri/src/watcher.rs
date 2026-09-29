@@ -1,4 +1,4 @@
-//! 文件监控：纯事件驱动，自动存档只发生在"回城"（副本会话文件被删除）时。
+﻿//! 文件监控：纯事件驱动，自动存档只发生在"回城"（副本会话文件被删除）时。
 //! 设计原则：
 //! - 副本会话由三个文件（persist.raid.json / map.json / loading_screen.json）同步表达，
 //!   进副本时创建、副本结束时删除，内容更新不删除重建。三者是同一状态的冗余，
@@ -21,7 +21,7 @@ use std::time::Duration;
 use notify::{Event, EventKind, RecursiveMode, RecommendedWatcher, Watcher};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{backup, profiles, AppState};
+use crate::{backup, dlog, profiles, AppState};
 
 /// 副本会话信号文件：随副本生命周期同步创建/删除，监听这一个文件即可。
 const RAID_SIGNAL: &str = "persist.raid.json";
@@ -34,19 +34,19 @@ fn emit(app: &AppHandle, event: &str, payload: impl serde::Serialize) {
 /// 回城自动备份（同步函数，由独立线程调用）。
 /// 含 5 秒存档稳定等待（防复制撞上游戏写盘）+ 按周去重。
 fn backup_on_raid_end(app: AppHandle, remote: std::path::PathBuf, profile: String) {
-    eprintln!("[backup] {profile} 备份线程启动（5 秒稳定等待后执行）");
+    dlog!("[backup] {profile} 备份线程启动（5 秒稳定等待后执行）");
     std::thread::sleep(Duration::from_secs(5));
     let week = profiles::current_week(&remote, &profile);
-    eprintln!("[backup] {profile} 当前周数读取结果: {:?}", week);
+    dlog!("[backup] {profile} 当前周数读取结果: {:?}", week);
     if let Some(w) = week {
         if backup::has_auto_for_week(&remote, &profile, w) {
-            eprintln!("[backup] {profile} 第{w}周已有 auto 档，去重跳过");
+            dlog!("[backup] {profile} 第{w}周已有 auto 档，去重跳过");
             return;
         }
     }
     match backup::backup_profile(&remote, &profile, "auto") {
         Ok(entry) => {
-            eprintln!("[backup] {profile} 备份成功: {}", entry.name);
+            dlog!("[backup] {profile} 备份成功: {}", entry.name);
             // 按设置清理旧自动档（保留最近 N 周）
             let keep = app
                 .state::<AppState>()
@@ -58,7 +58,7 @@ fn backup_on_raid_end(app: AppHandle, remote: std::path::PathBuf, profile: Strin
             emit(&app, "auto-backup-done", entry);
         }
         Err(err) => {
-            eprintln!("[backup] {profile} 备份失败: {err}");
+            dlog!("[backup] {profile} 备份失败: {err}");
             emit(&app, "auto-backup-error", err);
         }
     }
@@ -74,7 +74,7 @@ pub fn start_watcher(app: AppHandle, remote: &Path, profile: &str) -> notify::Re
     // 去重由 backup_on_raid_end 内的 has_auto_for_week 保证；
     // 若当前在副本中（信号文件存在）则不触发，等回城事件，避免存副本中途状态。
     let in_raid = remote.join(&profile).join(RAID_SIGNAL).exists();
-    eprintln!(
+    dlog!(
         "[watcher] {profile} 启动探测: in_raid={in_raid}（{}）",
         if in_raid {
             "副本中，等待回城事件"
@@ -107,11 +107,11 @@ pub fn start_watcher(app: AppHandle, remote: &Path, profile: &str) -> notify::Re
         match event.kind {
             EventKind::Create(_) => {
                 // 仅状态显示：前端提示"副本中"，不产生存档动作
-                eprintln!("[watcher] {p_event} 检测到副本开始（信号文件创建）");
+                dlog!("[watcher] {p_event} 检测到副本开始（信号文件创建）");
                 emit(&app_clone, "raid-start", p_event.clone());
             }
             EventKind::Remove(_) => {
-                eprintln!("[watcher] {p_event} 检测到副本结束（信号文件删除）→ 触发回城自动备份");
+                dlog!("[watcher] {p_event} 检测到副本结束（信号文件删除）→ 触发回城自动备份");
                 emit(&app_clone, "raid-end", p_event.clone());
                 // 独立线程执行备份（含 5 秒稳定等待，防复制撞上游戏写盘）；去重由 backup_on_raid_end 保证
                 let app2 = app_clone.clone();
@@ -127,3 +127,4 @@ pub fn start_watcher(app: AppHandle, remote: &Path, profile: &str) -> notify::Re
     watcher.watch(&remote.join(&profile), RecursiveMode::NonRecursive)?;
     Ok(watcher)
 }
+
