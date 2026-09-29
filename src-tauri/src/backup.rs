@@ -165,6 +165,38 @@ pub fn has_auto_for_week(remote: &Path, profile: &str, week: u32) -> bool {
         .any(|b| b.kind == "auto" && b.week == Some(week))
 }
 
+/// 自动备份保留策略：保留最近 keep_weeks 个不同周的 auto 档，删除更早的 auto 档。
+/// - keep_weeks == 0：不清理（保留全部）
+/// - 手动档始终保留；week 未知（week_unknown）的 auto 档保守保留，不参与清理
+/// - 删除失败只记录不中断（清理是优化项，不阻塞主流程）
+pub fn prune_auto_backups(remote: &Path, profile: &str, keep_weeks: u32) {
+    if keep_weeks == 0 {
+        return;
+    }
+    let autos: Vec<BackupEntry> = list_backups(remote, profile)
+        .into_iter()
+        .filter(|b| b.kind == "auto")
+        .collect();
+    // list_backups 已按名称（时间）降序：首个遇到的某周即为该周最新档
+    let mut keep: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    for b in &autos {
+        if let Some(w) = b.week {
+            if keep.len() < keep_weeks as usize {
+                keep.insert(w);
+            }
+        }
+    }
+    for b in autos {
+        if let Some(w) = b.week {
+            if !keep.contains(&w) {
+                if let Err(e) = delete_backup(remote, profile, &b.name) {
+                    eprintln!("[backup] {profile} 清理旧自动档 {0} 失败: {e}", b.name);
+                }
+            }
+        }
+    }
+}
+
 /// 删除单个备份。
 pub fn delete_backup(remote: &Path, profile: &str, backup_name: &str) -> Result<(), String> {
     let p = remote.join(profile).join(SAVE_DIR).join(backup_name);

@@ -19,9 +19,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use notify::{Event, EventKind, RecursiveMode, RecommendedWatcher, Watcher};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{backup, profiles};
+use crate::{backup, profiles, AppState};
 
 /// 副本会话信号文件：随副本生命周期同步创建/删除，监听这一个文件即可。
 const RAID_SIGNAL: &str = "persist.raid.json";
@@ -47,6 +47,14 @@ fn backup_on_raid_end(app: AppHandle, remote: std::path::PathBuf, profile: Strin
     match backup::backup_profile(&remote, &profile, "auto") {
         Ok(entry) => {
             eprintln!("[backup] {profile} 备份成功: {}", entry.name);
+            // 按设置清理旧自动档（保留最近 N 周）
+            let keep = app
+                .state::<AppState>()
+                .settings
+                .lock()
+                .map(|s| s.keep_auto_weeks)
+                .unwrap_or(0);
+            backup::prune_auto_backups(&remote, &profile, keep);
             emit(&app, "auto-backup-done", entry);
         }
         Err(err) => {
