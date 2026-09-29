@@ -7,9 +7,15 @@ mod week;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Manager};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Manager, WindowEvent};
+
+/// 退出标志：置位后允许窗口关闭并退出进程（托盘「退出」菜单置位后 app.exit）。
+static EXITING: AtomicBool = AtomicBool::new(false);
 
 pub struct AppState {
     pub remote_dir: Option<PathBuf>,
@@ -229,6 +235,53 @@ fn open_in_explorer(_path: &std::path::Path) -> Result<(), String> {
     Err("仅支持 Windows".into())
 }
 
+/// 创建系统托盘：左键单击显示主窗口，右键菜单「显示主窗口 / 退出」。
+/// 关闭主窗口后应用不退出（见 run() 的 on_window_event），常驻托盘继续监控。
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+    let mut builder = TrayIconBuilder::with_id("main-tray")
+        .tooltip("暗黑地牢 存档管家")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => show_main_window(app),
+            "quit" => {
+                EXITING.store(true, Ordering::SeqCst);
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        });
+    // 显式使用应用图标（TrayIconBuilder 不会自动取 default_window_icon）
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    let tray = builder.build(app)?;
+    // 持有 TrayIcon 实例，防止 drop 后托盘从系统移除
+    app.manage(tray);
+    Ok(())
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::new())
@@ -246,7 +299,20 @@ pub fn run() {
             open_remote_dir,
             launch_game
         ])
+        .on_window_event(|window, event| {
+            // 关闭主窗口 = 隐藏到托盘继续运行；仅当托盘「退出」置位时才真正关闭
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if !EXITING.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
+            // 系统托盘（关闭窗口后常驻后台）
+            if let Err(e) = setup_tray(app) {
+                eprintln!("托盘初始化失败: {e}");
+            }
             // 应用启动即自动开启监控（用户无需手动点按钮）
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
