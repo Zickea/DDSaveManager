@@ -195,7 +195,7 @@ h1 { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
   flex-direction: column;
   gap: 10px;
 }
-.week-group { border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.week-group { border-radius: 8px; overflow: hidden; border: 1px solid var(--line); flex: none;}
 .week-header {
   background: #3a2a1a;
   color: var(--text);

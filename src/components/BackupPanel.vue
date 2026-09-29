@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { NTag } from "naive-ui";
+import { NTag, NLayoutContent } from "naive-ui";
 import type { BackupEntry } from "../types";
 
 const props = defineProps<{
@@ -42,7 +42,7 @@ function timeLabel(ts: string): string {
 </script>
 
 <template>
-  <div id="backup-list" class="backup-list">
+  <n-layout-content content-class="backup-list" :native-scrollbar="false">
     <div v-if="backups.length === 0" class="empty">
       该档案还没有备份。点击「＋ 手动备份」，或启动监控等待回城自动备份
     </div>
@@ -65,5 +65,5 @@ function timeLabel(ts: string): string {
         <span class="backup-time">{{ timeLabel(b.timestamp) }}</span>
       </div>
     </div>
-  </div>
+  </n-layout-content>
 </template>
