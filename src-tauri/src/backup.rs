@@ -19,6 +19,8 @@ pub struct BackupEntry {
     pub timestamp: String,
     pub week: Option<u32>,
     pub kind: String, // auto / manual
+    /// 手动备份备注（来自备份目录内 note.txt；auto 档为 None）
+    pub note: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -65,7 +67,14 @@ fn clear_dir_keep_savedirs(dir: &Path) -> std::io::Result<()> {
 }
 
 /// 执行一次备份（kind: auto / manual），返回条目信息。
-pub fn backup_profile(remote: &Path, profile: &str, kind: &str) -> Result<BackupEntry, String> {
+/// note 仅手动备份时使用：写入备份目录内 note.txt（不编码进目录名，
+/// 保证目录名格式稳定、解析器不变，且备注可含任意字符）。
+pub fn backup_profile(
+    remote: &Path,
+    profile: &str,
+    kind: &str,
+    note: Option<&str>,
+) -> Result<BackupEntry, String> {
     let _guard = BACKUP_LOCK.lock().map_err(|_| "备份锁占用".to_string())?;
     let src = remote.join(profile);
     if !src.is_dir() {
@@ -80,16 +89,34 @@ pub fn backup_profile(remote: &Path, profile: &str, kind: &str) -> Result<Backup
     };
     let dir_name = format!("{ts}_{week_tag}_{kind}");
     let dst = src.join(SAVE_DIR).join(&dir_name); // 备份统一放在 profile_N\DDSL_save 下
+    // 同秒重复备份（如连续两次手动备份）会导致目录名冲突：加序号区分，避免覆盖/混入上次内容
+    let dst = {
+        let mut candidate = dst;
+        let mut n = 1;
+        while candidate.exists() {
+            candidate = src.join(SAVE_DIR).join(format!("{dir_name}_{n}"));
+            n += 1;
+        }
+        candidate
+    };
     // 只备份存档文件本身（不包含子目录，如官方 backup 文件夹、其他备份）
     copy_files_only(&src, &dst).map_err(|e| {
         dlog!("[backup] {profile} 复制失败（{kind}）: {e}");
         format!("备份失败: {e}")
     })?;
+    // 备注落盘（失败不影响备份结果）
+    if let Some(text) = note.filter(|t| !t.trim().is_empty()) {
+        let _ = fs::write(dst.join("note.txt"), text.trim());
+    }
     Ok(BackupEntry {
-        name: dir_name,
+        name: dst
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or(dir_name),
         timestamp: ts,
         week,
         kind: kind.to_string(),
+        note: note.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
     })
 }
 
@@ -146,17 +173,23 @@ fn parse_backup_name(name: &str) -> Option<BackupEntry> {
         timestamp,
         week,
         kind,
+        note: None,
     })
 }
 
 /// 列出某档案的所有备份（位于 profile_N\DDSL_save 下），按名称字典序降序（即时间降序，格式统一）。
+/// 每个条目读取目录内 note.txt 作为备注（缺失则为 None）。
 pub fn list_backups(remote: &Path, profile: &str) -> Vec<BackupEntry> {
     let mut out = Vec::new();
     let dir = remote.join(profile).join(SAVE_DIR);
     if let Ok(rd) = fs::read_dir(&dir) {
         for e in rd.flatten() {
             if e.path().is_dir() {
-                if let Some(entry) = parse_backup_name(&e.file_name().to_string_lossy()) {
+                if let Some(mut entry) = parse_backup_name(&e.file_name().to_string_lossy()) {
+                    entry.note = fs::read_to_string(e.path().join("note.txt"))
+                        .ok()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
                     out.push(entry);
                 }
             }
@@ -386,5 +419,34 @@ mod tests {
         mk_backup(&remote, "2026-09-29_08-00-00_week02_auto");
         prune_auto_backups(&remote, "profile_0", 0); // 0 = 不清理
         assert_eq!(list_backups(&remote, "profile_0").len(), 2);
+    }
+
+    #[test]
+    fn manual_backup_writes_and_reads_note() {
+        let remote = temp_remote("note");
+        // 备份（无 campaign_log → week_unknown，不影响备注链路）
+        let entry = backup_profile(&remote, "profile_0", "manual", Some("打 Boss 前")).unwrap();
+        assert_eq!(entry.note.as_deref(), Some("打 Boss 前"));
+        assert_eq!(entry.kind, "manual");
+        // note.txt 已写入备份目录
+        let note_file = remote
+            .join("profile_0")
+            .join(SAVE_DIR)
+            .join(&entry.name)
+            .join("note.txt");
+        assert_eq!(fs::read_to_string(note_file).unwrap(), "打 Boss 前");
+        // list_backups 读回备注
+        let listed = list_backups(&remote, "profile_0");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].note.as_deref(), Some("打 Boss 前"));
+        // 空备注不写 note.txt
+        let entry2 = backup_profile(&remote, "profile_0", "manual", Some("   ")).unwrap();
+        assert!(entry2.note.is_none());
+        assert!(!remote
+            .join("profile_0")
+            .join(SAVE_DIR)
+            .join(&entry2.name)
+            .join("note.txt")
+            .exists());
     }
 }

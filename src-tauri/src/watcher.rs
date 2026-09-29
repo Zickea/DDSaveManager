@@ -44,7 +44,7 @@ fn backup_on_raid_end(app: AppHandle, remote: std::path::PathBuf, profile: Strin
             return;
         }
     }
-    match backup::backup_profile(&remote, &profile, "auto") {
+    match backup::backup_profile(&remote, &profile, "auto", None) {
         Ok(entry) => {
             dlog!("[backup] {profile} 备份成功: {}", entry.name);
             // 按设置清理旧自动档（保留最近 N 周）

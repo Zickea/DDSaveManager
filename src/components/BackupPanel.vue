@@ -63,7 +63,19 @@ function timeLabel(ts: string): string {
           {{ b.kind === "auto" ? "自动" : "手动" }}
         </n-tag>
         <span class="backup-time">{{ timeLabel(b.timestamp) }}</span>
+        <span v-if="b.note" class="backup-note" :title="b.note">{{ b.note }}</span>
       </div>
     </div>
   </n-layout-content>
 </template>
+
+<style scoped>
+.backup-note {
+  font-size: 11px;
+  color: var(--text-faint);
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

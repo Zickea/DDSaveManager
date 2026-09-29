@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { NButton, NDrawer, NDrawerContent, NInputNumber, NLayout, NLayoutContent, NLayoutHeader, NLayoutSider, NModal, NSwitch, NTag, useDialog, useMessage } from "naive-ui";
+import { NButton, NDrawer, NDrawerContent, NInput, NInputNumber, NLayout, NLayoutContent, NLayoutHeader, NLayoutSider, NModal, NSwitch, NTag, useDialog, useMessage } from "naive-ui";
 import type { BackupEntry, ProfileInfo, Settings, StatusInfo } from "../types";
 import ProfileSidebar from "./ProfileSidebar.vue";
 import BackupPanel from "./BackupPanel.vue";
@@ -118,13 +118,25 @@ async function launchGame() {
   }
 }
 
-async function manualBackup() {
+/* ========== 手动备份（可选备注） ========== */
+const showManualModal = ref(false);
+const manualNote = ref("");
+
+function openManualBackup() {
+  if (!currentProfile.value) return;
+  manualNote.value = "";
+  showManualModal.value = true;
+}
+
+async function confirmManualBackup() {
   if (!currentProfile.value) return;
   try {
     const entry = await invoke<BackupEntry>("manual_backup", {
       profile: currentProfile.value,
+      note: manualNote.value.trim() || null,
     });
     message.success(`已手动备份：${entry.name}`);
+    showManualModal.value = false;
     refreshBackups();
   } catch (e) {
     message.error(String(e));
@@ -359,7 +371,7 @@ onUnmounted(() => {
           <div class="detail-title">{{ currentProfile ?? "未选择档案" }}</div>
           <div class="detail-actions">
             <n-button size="small" @click="toggleWatch">{{ watchBtnText }}</n-button>
-            <n-button size="small" type="primary" :disabled="!currentProfile" @click="manualBackup">
+            <n-button size="small" type="primary" :disabled="!currentProfile" @click="openManualBackup">
               ＋ 手动备份
             </n-button>
             <n-button size="small" type="error" :disabled="!selectedBackup" @click="restoreBackup">
@@ -390,6 +402,25 @@ onUnmounted(() => {
           <n-button type="error" block @click="deleteProfileAll">
             删除整个档案（进度 + 备份，不可恢复）
           </n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="showManualModal">
+      <div class="manual-modal">
+        <h3>手动备份 {{ currentProfile }}</h3>
+        <p class="dim">可为这次备份添加备注（可选，用于日后区分）：</p>
+        <n-input
+          v-model:value="manualNote"
+          type="textarea"
+          :rows="2"
+          placeholder="例如：下深潜前 / 准备打 Boss / 突发奇想…"
+          maxlength="100"
+          show-count
+        />
+        <div class="manual-actions">
+          <n-button size="small" @click="showManualModal = false">取消</n-button>
+          <n-button size="small" type="primary" @click="confirmManualBackup">备份</n-button>
         </div>
       </div>
     </n-modal>
@@ -444,4 +475,8 @@ onUnmounted(() => {
 .setting-label { flex: 1; min-width: 0; }
 .setting-name { font-size: 13px; color: var(--text); }
 .setting-desc { font-size: 11px; color: var(--text-faint); margin-top: 3px; line-height: 1.5; }
+.manual-modal { width: 360px; max-width: 90vw; }
+.manual-modal h3 { margin: 0 0 6px; font-size: 14px; color: var(--text); }
+.manual-modal .dim { margin: 0 0 10px; font-size: 12px; color: var(--text-dim); }
+.manual-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 </style>

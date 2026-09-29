@@ -19,6 +19,7 @@ export interface BackupEntry {
   timestamp: string;
   week: number | null;
   kind: string; // auto / manual
+  note: string | null; // 手动备份备注
 }
 
 export interface RestoreResult {

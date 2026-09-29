@@ -93,15 +93,18 @@ fn get_profiles(state: tauri::State<AppState>) -> Vec<ProfileInfo> {
 async fn manual_backup(
     state: tauri::State<'_, AppState>,
     profile: String,
+    note: Option<String>,
 ) -> Result<backup::BackupEntry, String> {
     let remote = state
         .remote_dir
         .clone()
         .ok_or_else(|| "未找到暗黑地牢存档目录，请确认游戏已安装并运行过一次".to_string())?;
     // 大目录复制放后台线程，避免阻塞主线程导致界面卡死
-    tauri::async_runtime::spawn_blocking(move || backup::backup_profile(&remote, &profile, "manual"))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        backup::backup_profile(&remote, &profile, "manual", note.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
