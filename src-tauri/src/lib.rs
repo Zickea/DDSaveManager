@@ -99,6 +99,10 @@ async fn manual_backup(
         .remote_dir
         .clone()
         .ok_or_else(|| "未找到暗黑地牢存档目录，请确认游戏已安装并运行过一次".to_string())?;
+    // 副本（未结算）状态下禁止备份：备份的只是副本中途进度，且会与 Steam 云台账不一致
+    if backup::is_in_raid(&remote, &profile) {
+        return Err("当前档案处于副本（未结算）状态：请先回城（完成或撤退副本）后再手动备份。".into());
+    }
     // 大目录复制放后台线程，避免阻塞主线程导致界面卡死
     tauri::async_runtime::spawn_blocking(move || {
         backup::backup_profile(&remote, &profile, "manual", note.as_deref())
@@ -125,6 +129,14 @@ async fn restore_backup(
         .remote_dir
         .clone()
         .ok_or_else(|| "未找到暗黑地牢存档目录".to_string())?;
+    // 副本（未结算）状态下禁止恢复：本地文件与 Steam 云台账大小不一致，
+    // 游戏启动时 Steamworks 云存储校验失败（didn't read whole file?）→ 无法加载
+    if backup::is_in_raid(&remote, &profile) {
+        return Err(
+            "当前档案处于副本（未结算）状态：直接用城镇档覆盖会导致游戏启动时 Steam 云存储校验失败而无法加载。\n请先在游戏内完成或撤退本次副本，回到城镇后再恢复。"
+                .into(),
+        );
+    }
     // 大目录复制放后台线程，避免阻塞主线程导致界面卡死
     tauri::async_runtime::spawn_blocking(move || {
         backup::restore_profile(&remote, &profile, &backup_name)

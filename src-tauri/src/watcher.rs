@@ -23,9 +23,6 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{backup, dlog, profiles, AppState};
 
-/// 副本会话信号文件：随副本生命周期同步创建/删除，监听这一个文件即可。
-const RAID_SIGNAL: &str = "persist.raid.json";
-
 fn emit(app: &AppHandle, event: &str, payload: impl serde::Serialize) {
     let value = serde_json::to_value(payload).unwrap_or(serde_json::Value::Null);
     let _ = app.emit(event, value);
@@ -73,7 +70,7 @@ pub fn start_watcher(app: AppHandle, remote: &Path, profile: &str) -> notify::Re
     // 语义与回城 Remove 完全一致（城镇状态 = 本周进副本前状态），
     // 去重由 backup_on_raid_end 内的 has_auto_for_week 保证；
     // 若当前在副本中（信号文件存在）则不触发，等回城事件，避免存副本中途状态。
-    let in_raid = remote.join(&profile).join(RAID_SIGNAL).exists();
+    let in_raid = remote.join(&profile).join(backup::RAID_SIGNAL).exists();
     dlog!(
         "[watcher] {profile} 启动探测: in_raid={in_raid}（{}）",
         if in_raid {
@@ -98,7 +95,7 @@ pub fn start_watcher(app: AppHandle, remote: &Path, profile: &str) -> notify::Re
         let relevant = event.paths.iter().any(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n == RAID_SIGNAL)
+                .map(|n| n == backup::RAID_SIGNAL)
                 .unwrap_or(false)
         });
         if !relevant {

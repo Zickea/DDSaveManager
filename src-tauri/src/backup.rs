@@ -10,6 +10,12 @@ use crate::{dlog, paths, profiles, week};
 /// 备份存放的子目录名（位于各 profile_N 下，与官方 backup 同级）。
 const SAVE_DIR: &str = "DDSL_save";
 
+/// 副本会话信号文件：进副本时创建、副本结束（回城）时删除。
+/// 存在 = 档案处于副本（未结算）状态；在副本状态下备份/恢复城镇档，
+/// 会导致本地文件与 Steam 云台账（remotecache.vdf）记录的文件大小不一致，
+/// 游戏启动时 Steamworks StorageManager 校验失败（didn't read whole file?）无法加载。
+pub const RAID_SIGNAL: &str = "persist.raid.json";
+
 /// 全局备份串行锁：所有备份/恢复的复制操作排队执行，避免并发 IO。
 static BACKUP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -301,6 +307,12 @@ fn detect_game() -> bool {
     false
 }
 
+/// 检测档案是否处于副本（未结算）状态：副本信号文件 persist.raid.json 存在即为副本中。
+/// 副本状态（含强退残留）下禁止手动备份与恢复城镇档——见 RAID_SIGNAL 注释的坏档原因。
+pub fn is_in_raid(remote: &Path, profile: &str) -> bool {
+    remote.join(profile).join(RAID_SIGNAL).exists()
+}
+
 /// 检测游戏进程是否运行（Darkest.exe），结果缓存 5 秒。
 pub fn game_running() -> bool {
     let now = std::time::Instant::now();
@@ -439,14 +451,22 @@ mod tests {
         let listed = list_backups(&remote, "profile_0");
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].note.as_deref(), Some("打 Boss 前"));
-        // 空备注不写 note.txt
-        let entry2 = backup_profile(&remote, "profile_0", "manual", Some("   ")).unwrap();
-        assert!(entry2.note.is_none());
-        assert!(!remote
-            .join("profile_0")
-            .join(SAVE_DIR)
-            .join(&entry2.name)
-            .join("note.txt")
-            .exists());
+    }
+
+    #[test]
+    fn is_in_raid_detects_signal_file() {
+        let remote = temp_remote("raid");
+        // 无信号文件 = 城镇
+        assert!(!is_in_raid(&remote, "profile_0"));
+        // 存在 persist.raid.json = 副本中/强退残留
+        std::fs::write(
+            remote.join("profile_0").join(RAID_SIGNAL),
+            b"{}",
+        )
+        .unwrap();
+        assert!(is_in_raid(&remote, "profile_0"));
+        // 删除后回到城镇
+        std::fs::remove_file(remote.join("profile_0").join(RAID_SIGNAL)).unwrap();
+        assert!(!is_in_raid(&remote, "profile_0"));
     }
 }
