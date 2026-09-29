@@ -167,11 +167,22 @@ function restoreBackup() {
     onPositiveClick: async () => {
       try {
         await invoke("stop_watchers");
-        const r = await invoke<{ cache_deleted: boolean }>("restore_backup", {
-          profile: currentProfile.value,
-          backupName: selectedBackup.value,
-        });
+        const r = await invoke<{ cache_deleted: boolean; needs_steam_restart: boolean }>(
+          "restore_backup",
+          {
+            profile: currentProfile.value,
+            backupName: selectedBackup.value,
+          },
+        );
         message.success("恢复完成" + (r.cache_deleted ? "，已清理 remotecache.vdf" : ""));
+        if (r.needs_steam_restart) {
+          dialog.warning({
+            title: "重要：请重启 Steam",
+            content:
+              "该档案原本处于未结算副本状态，恢复已完成。\n\n为避免游戏启动时报错（Steamworks 云存储校验失败），请先完全退出 Steam 客户端（托盘图标右键退出），再启动游戏。",
+            positiveText: "知道了",
+          });
+        }
         await invoke("start_watchers");
         refreshBackups();
       } catch (e) {

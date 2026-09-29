@@ -129,15 +129,9 @@ async fn restore_backup(
         .remote_dir
         .clone()
         .ok_or_else(|| "未找到暗黑地牢存档目录".to_string())?;
-    // 副本（未结算）状态下禁止恢复：本地文件与 Steam 云台账大小不一致，
-    // 游戏启动时 Steamworks 云存储校验失败（didn't read whole file?）→ 无法加载
-    if backup::is_in_raid(&remote, &profile) {
-        return Err(
-            "当前档案处于副本（未结算）状态：直接用城镇档覆盖会导致游戏启动时 Steam 云存储校验失败而无法加载。\n请先在游戏内完成或撤退本次副本，回到城镇后再恢复。"
-                .into(),
-        );
-    }
-    // 大目录复制放后台线程，避免阻塞主线程导致界面卡死
+    // 大目录复制放后台线程，避免阻塞主线程导致界面卡死。
+    // 副本残留状态（游戏未运行）允许恢复：实测恢复后完全退出 Steam 客户端再启动游戏可正常加载
+    // （游戏运行中的拦截在 restore_profile 内由 game_running 负责）。
     tauri::async_runtime::spawn_blocking(move || {
         backup::restore_profile(&remote, &profile, &backup_name)
     })

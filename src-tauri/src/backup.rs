@@ -32,6 +32,11 @@ pub struct BackupEntry {
 #[derive(serde::Serialize)]
 pub struct RestoreResult {
     pub cache_deleted: bool,
+    /// 恢复前档案处于副本（未结算）状态时为 true。
+    /// 此时运行中的 Steam 客户端可能仍持有副本中途的云清单，恢复后需完全退出
+    /// Steam 客户端再启动游戏，否则游戏启动时 Steamworks 云存储校验会失败
+    /// （didn't read whole file?）。已实测：重启 Steam 后客户端重新扫描磁盘，校验通过。
+    pub needs_steam_restart: bool,
 }
 
 /// 复制目录下的顶层文件（跳过子目录）。
@@ -136,6 +141,8 @@ pub fn restore_profile(
     if game_running() {
         return Err("检测到游戏正在运行，请先退出游戏再恢复存档".into());
     }
+    // 记录恢复前是否处于副本残留状态：决定恢复后是否需要重启 Steam
+    let in_raid = is_in_raid(remote, profile);
     let src = remote.join(profile).join(SAVE_DIR).join(backup_name);
     if !src.is_dir() {
         return Err(format!("备份 {backup_name} 不存在"));
@@ -151,7 +158,10 @@ pub fn restore_profile(
         Some(p) => fs::remove_file(p).is_ok(),
         None => false,
     };
-    Ok(RestoreResult { cache_deleted })
+    Ok(RestoreResult {
+        cache_deleted,
+        needs_steam_restart: in_raid,
+    })
 }
 
 /// 解析备份文件夹名（元数据编码在名字里）。
