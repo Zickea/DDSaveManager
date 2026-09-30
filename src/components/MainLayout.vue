@@ -342,11 +342,10 @@ onMounted(async () => {
     console.error(e);
   }
   await refreshStatus();
-  // 每 20 秒刷新状态与档案（自动接入新建档案）
-  window.setInterval(() => {
-    refreshStatus();
-    refreshProfiles();
-  }, 20000);
+  // 游戏运行状态：每 2 秒刷新，快速响应游戏启停（进程检测为 Win32 API，开销极小）
+  window.setInterval(() => refreshStatus(), 2000);
+  // 档案列表：每 20 秒刷新（含 dson 解析，保持低频避免频繁 IO）
+  window.setInterval(() => refreshProfiles(), 20000);
 });
 
 onUnmounted(() => {

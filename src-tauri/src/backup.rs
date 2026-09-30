@@ -303,40 +303,99 @@ pub fn delete_profile(remote: &Path, profile: &str) -> Result<(), String> {
     fs::remove_dir_all(&dir).map_err(|e| format!("删除档案失败: {e}"))
 }
 
-/// 进程检测结果缓存：5 秒内复用，避免频繁启动 tasklist 子进程（黑窗闪现与卡顿的根源）。
+/// 进程检测结果缓存：2 秒内复用，避免高频轮询时的重复枚举开销。
 /// 缓存同时记录进程名，使游戏/Steam 两个检测共用一份缓存互不干扰。
 static PROC_CACHE: std::sync::Mutex<Option<(std::time::Instant, String, bool)>> =
     std::sync::Mutex::new(None);
 
+/// Windows 进程枚举（Toolhelp32）：纯 Win32 API，无子进程、无黑窗，毫秒级。
+#[cfg(windows)]
+mod winproc {
+    use std::ffi::c_void;
+
+    const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
+    const INVALID_HANDLE_VALUE: isize = -1;
+    const MAX_PATH: usize = 260;
+
+    #[repr(C)]
+    struct PROCESSENTRY32W {
+        dwSize: u32,
+        cntUsage: u32,
+        th32ProcessID: u32,
+        th32DefaultHeapID: usize,
+        th32ModuleID: u32,
+        cntThreads: u32,
+        th32ParentProcessID: u32,
+        th32PriClassBase: i32,
+        dwFlags: u32,
+        szExeFile: [u16; MAX_PATH],
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) -> isize;
+        fn Process32FirstW(hSnapshot: isize, lppe: *mut PROCESSENTRY32W) -> i32;
+        fn Process32NextW(hSnapshot: isize, lppe: *mut PROCESSENTRY32W) -> i32;
+        fn CloseHandle(hObject: isize) -> i32;
+    }
+
+    /// 进程快照中是否存在指定文件名（不区分大小写）。
+    pub fn process_exists(name: &str) -> bool {
+        unsafe {
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snap == INVALID_HANDLE_VALUE {
+                return false;
+            }
+            let mut pe = PROCESSENTRY32W {
+                dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                cntUsage: 0,
+                th32ProcessID: 0,
+                th32DefaultHeapID: 0,
+                th32ModuleID: 0,
+                cntThreads: 0,
+                th32ParentProcessID: 0,
+                th32PriClassBase: 0,
+                dwFlags: 0,
+                szExeFile: [0; MAX_PATH],
+            };
+            let mut found = false;
+            if Process32FirstW(snap, &mut pe) != 0 {
+                loop {
+                    let len = pe.szExeFile.iter().position(|&c| c == 0).unwrap_or(MAX_PATH);
+                    let exe = String::from_utf16_lossy(&pe.szExeFile[..len]);
+                    if exe.eq_ignore_ascii_case(name) {
+                        found = true;
+                        break;
+                    }
+                    if Process32NextW(snap, &mut pe) == 0 {
+                        break;
+                    }
+                }
+            }
+            CloseHandle(snap);
+            found
+        }
+    }
+}
+
 fn detect_process(name: &str) -> bool {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        if let Ok(out) = std::process::Command::new("tasklist")
-            // CREATE_NO_WINDOW：不创建控制台窗口（避免每次查询弹出黑色命令窗）
-            .creation_flags(0x0800_0000)
-            .arg("/FI")
-            .arg(format!("IMAGENAME eq {name}"))
-            .arg("/NH")
-            .output()
-        {
-            let s = String::from_utf8_lossy(&out.stdout);
-            return s.contains(name);
-        }
+        winproc::process_exists(name)
     }
     #[cfg(not(windows))]
     {
         // 非 Windows 平台不做进程检测
+        false
     }
-    false
 }
 
-/// 检测指定进程是否运行（5 秒缓存）。
+/// 检测指定进程是否运行（2 秒缓存）。
 fn process_running(name: &str) -> bool {
     let now = std::time::Instant::now();
     if let Ok(mut cache) = PROC_CACHE.lock() {
         if let Some((t, n, v)) = cache.as_ref() {
-            if n == name && now.duration_since(*t) < std::time::Duration::from_secs(5) {
+            if n == name && now.duration_since(*t) < std::time::Duration::from_secs(2) {
                 return *v;
             }
         }
