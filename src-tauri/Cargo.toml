@@ -1,6 +1,6 @@
 [package]
 name = "dd-save-manager"
-version = "0.1.0"
+version = "0.1.1"
 description = "暗黑地牢1 存档管家：自动/手动备份与恢复"
 authors = ["Liu Xiaofan"]
 edition = "2021"
