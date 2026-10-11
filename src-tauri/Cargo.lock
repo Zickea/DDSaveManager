@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "dd-save-manager"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "notify",
