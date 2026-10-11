@@ -15,6 +15,9 @@ fn steam_install_dir_from_registry() -> Option<PathBuf> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let key = hkcu.open_subkey(r"Software\Valve\Steam").ok()?;
     let raw: String = key.get_value("SteamPath").ok()?;
+    // 注册表通常存正斜杠小写（"c:/program files (x86)/steam"），统一替换为反斜杠。
+    // 否则拼出的 userdata/remote 路径是混合斜杠，左下角显示怪异、explorer 传参也可能解析异常。
+    let raw = raw.replace('/', "\\");
     let p = PathBuf::from(&raw);
     if p.join("steam.exe").is_file() {
         Some(p) // 本身就是 Steam 根目录
